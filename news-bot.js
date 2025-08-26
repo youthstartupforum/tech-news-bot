@@ -139,10 +139,44 @@ function scheduleUpdates() {
   // Run immediately
   fetchAndPostNews();
   
-  // Run every 4 hours (adjust as needed)
-  setInterval(fetchAndPostNews, 4 * 60 * 60 * 1000);
+  // Calculate next run times for Korea timezone (12am, 8am, 4pm)
+  function scheduleNextRun() {
+    const now = new Date();
+    const koreaTime = new Date(now.toLocaleString("en-US", {timeZone: "Asia/Seoul"}));
+    
+    // Target times in Korea (hours: 0, 8, 16)
+    const targetHours = [0, 8, 16];
+    let nextRun = new Date(koreaTime);
+    
+    // Find next target time
+    let found = false;
+    for (let hour of targetHours) {
+      nextRun.setHours(hour, 0, 0, 0);
+      if (nextRun > koreaTime) {
+        found = true;
+        break;
+      }
+    }
+    
+    // If no time found today, use tomorrow's first time (12am)
+    if (!found) {
+      nextRun.setDate(nextRun.getDate() + 1);
+      nextRun.setHours(0, 0, 0, 0);
+    }
+    
+    // Convert back to local time for setTimeout
+    const delay = nextRun.getTime() - now.getTime();
+    
+    console.log(`Next run scheduled for: ${nextRun.toLocaleString("en-US", {timeZone: "Asia/Seoul"})} Korea time`);
+    
+    setTimeout(() => {
+      fetchAndPostNews();
+      scheduleNextRun(); // Schedule the next run
+    }, delay);
+  }
   
-  console.log('News bot scheduled to run every 4 hours');
+  scheduleNextRun();
+  console.log('News bot scheduled for 12am, 8am, and 4pm Korea time');
 }
 
 // Export for use
