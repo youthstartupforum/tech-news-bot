@@ -6,12 +6,9 @@
   "scripts": {
     "start": "node news-bot.js"
   },
-  "dependencies": {
-    "axios": "0.27.2",
-    "cheerio": "1.0.0-rc.10"
-  },
+  "dependencies": {},
   "engines": {
-    "node": "16"
+    "node": "16.x"
   },
   "keywords": ["discord", "bot", "news", "tech"],
   "author": "Your Name",

@@ -1,10 +1,10 @@
-const axios = require('axios');
-const cheerio = require('cheerio');
+const https = require('https');
+const http = require('http');
 
 // Configuration
 const DISCORD_WEBHOOK_URL = 'https://discord.com/api/webhooks/1409762044315566170/VbgnZQJVH9gX-Eh7JUbLhK_QaZ88qIHawv6zxK0nfmK1yW9NqMT30FEFKHyu08nhI4dY';
 
-// News sources configuration  
+// News sources configuration
 const NEWS_SOURCES = {
   techcrunch: {
     name: 'TechCrunch',
@@ -23,40 +23,91 @@ const NEWS_SOURCES = {
   }
 };
 
-// Function to parse RSS feeds
-async function parseRSSFeed(url) {
-  try {
-    const response = await axios.get(url);
-    const $ = cheerio.load(response.data, { xmlMode: true });
+// Simple HTTP request function
+function makeRequest(url) {
+  return new Promise((resolve, reject) => {
+    const protocol = url.startsWith('https:') ? https : http;
     
-    const articles = [];
-    $('item').each((index, element) => {
-      if (index < 1) { // Get only the top 1 article
-        const title = $(element).find('title').text();
-        const link = $(element).find('link').text();
-        const description = $(element).find('description').text().replace(/<[^>]*>/g, ''); // Strip HTML
-        const pubDate = $(element).find('pubDate').text();
-        
-        articles.push({
-          title,
-          link,
-          description: description.substring(0, 300) + '...', // Truncate description
-          pubDate,
-          source: url // Add source for comparison
-        });
+    const options = {
+      headers: {
+        'User-Agent': 'TechNewsBot/1.0'
       }
-    });
+    };
     
-    return articles;
+    protocol.get(url, options, (res) => {
+      let data = '';
+      
+      res.on('data', (chunk) => {
+        data += chunk;
+      });
+      
+      res.on('end', () => {
+        resolve(data);
+      });
+    }).on('error', (err) => {
+      reject(err);
+    });
+  });
+}
+
+// Simple XML parsing function
+function parseRSSFeed(xmlData) {
+  const articles = [];
+  
+  // Simple regex-based XML parsing (not ideal but works without dependencies)
+  const itemRegex = /<item[^>]*>(.*?)<\/item>/gs;
+  const titleRegex = /<title[^>]*><!\[CDATA\[(.*?)\]\]><\/title>|<title[^>]*>(.*?)<\/title>/s;
+  const linkRegex = /<link[^>]*>(.*?)<\/link>/s;
+  const descRegex = /<description[^>]*><!\[CDATA\[(.*?)\]\]><\/description>|<description[^>]*>(.*?)<\/description>/s;
+  const dateRegex = /<pubDate[^>]*>(.*?)<\/pubDate>/s;
+  
+  let matches = xmlData.matchAll(itemRegex);
+  let count = 0;
+  
+  for (let match of matches) {
+    if (count >= 3) break;
+    
+    const itemContent = match[1];
+    
+    const titleMatch = itemContent.match(titleRegex);
+    const linkMatch = itemContent.match(linkRegex);
+    const descMatch = itemContent.match(descRegex);
+    const dateMatch = itemContent.match(dateRegex);
+    
+    if (titleMatch && linkMatch) {
+      const title = (titleMatch[1] || titleMatch[2] || '').trim();
+      const link = linkMatch[1].trim();
+      const description = (descMatch ? (descMatch[1] || descMatch[2] || '') : '').replace(/<[^>]*>/g, '').trim();
+      const pubDate = dateMatch ? dateMatch[1].trim() : new Date().toISOString();
+      
+      if (title && link) {
+        articles.push({
+          title: title.substring(0, 200),
+          link,
+          description: description.substring(0, 300) + '...',
+          pubDate
+        });
+        count++;
+      }
+    }
+  }
+  
+  return articles;
+}
+
+// Function to parse RSS feeds
+async function parseRSSSource(url) {
+  try {
+    const xmlData = await makeRequest(url);
+    return parseRSSFeed(xmlData);
   } catch (error) {
-    console.error(`Error parsing RSS feed ${url}:`, error);
+    console.error(`Error parsing RSS feed ${url}:`, error.message);
     return [];
   }
 }
 
-// Function to create a summary using a simple approach
+// Function to create a summary
 function createSummary(description) {
-  // Simple summary: take first 2 sentences or 150 characters
   const sentences = description.split('. ');
   if (sentences.length >= 2) {
     return sentences.slice(0, 2).join('. ') + '.';
@@ -65,15 +116,37 @@ function createSummary(description) {
 }
 
 // Function to send message to Discord
-async function sendToDiscord(embed) {
-  try {
-    await axios.post(DISCORD_WEBHOOK_URL, {
-      embeds: [embed]
+function sendToDiscord(embed) {
+  return new Promise((resolve, reject) => {
+    const data = JSON.stringify({ embeds: [embed] });
+    
+    const options = {
+      hostname: 'discord.com',
+      port: 443,
+      path: '/api/webhooks/1409762044315566170/VbgnZQJVH9gX-Eh7JUbLhK_QaZ88qIHawv6zxK0nfmK1yW9NqMT30FEFKHyu08nhI4dY',
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Content-Length': data.length
+      }
+    };
+    
+    const req = https.request(options, (res) => {
+      res.on('data', () => {});
+      res.on('end', () => {
+        console.log('Message sent to Discord successfully');
+        resolve();
+      });
     });
-    console.log('Message sent to Discord successfully');
-  } catch (error) {
-    console.error('Error sending to Discord:', error);
-  }
+    
+    req.on('error', (error) => {
+      console.error('Error sending to Discord:', error);
+      reject(error);
+    });
+    
+    req.write(data);
+    req.end();
+  });
 }
 
 // Function to format article for Discord embed
@@ -104,31 +177,22 @@ function getSourceColor(source) {
 async function fetchAndPostNews() {
   console.log('Starting news fetch...');
   
-  let allArticles = [];
-  
-  // Collect articles from all sources
   for (const [sourceKey, sourceConfig] of Object.entries(NEWS_SOURCES)) {
     console.log(`Fetching from ${sourceConfig.name}...`);
     
-    const articles = await parseRSSFeed(sourceConfig.url);
-    
-    // Add source info to each article
-    articles.forEach(article => {
-      article.sourceKey = sourceKey;
-    });
-    
-    allArticles.push(...articles);
-  }
-  
-  // Sort by publication date (most recent first)
-  allArticles.sort((a, b) => new Date(b.pubDate) - new Date(a.pubDate));
-  
-  // Post only the most recent article
-  if (allArticles.length > 0) {
-    const newestArticle = allArticles[0];
-    const embed = createDiscordEmbed(newestArticle.sourceKey, newestArticle);
-    await sendToDiscord(embed);
-    console.log(`Posted newest article: ${newestArticle.title}`);
+    try {
+      const articles = await parseRSSSource(sourceConfig.url);
+      
+      for (const article of articles) {
+        const embed = createDiscordEmbed(sourceKey, article);
+        await sendToDiscord(embed);
+        
+        // Add delay to avoid rate limiting
+        await new Promise(resolve => setTimeout(resolve, 1000));
+      }
+    } catch (error) {
+      console.error(`Error processing ${sourceConfig.name}:`, error.message);
+    }
   }
   
   console.log('News fetch completed');
