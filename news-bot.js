@@ -122,7 +122,21 @@ function createSummary(description) {
 // Function to send message to Discord
 function sendToDiscord(embed) {
   return new Promise((resolve, reject) => {
-    const data = JSON.stringify({ embeds: [embed] });
+    // Simplified payload structure
+    const payload = {
+      embeds: [{
+        title: embed.title.substring(0, 256), // Discord title limit
+        url: embed.url,
+        description: embed.description.substring(0, 2048), // Discord description limit
+        color: embed.color,
+        footer: {
+          text: embed.footer.text.substring(0, 2048) // Footer text limit
+        },
+        timestamp: embed.timestamp
+      }]
+    };
+    
+    const data = JSON.stringify(payload);
     
     const options = {
       hostname: 'discord.com',
@@ -136,10 +150,16 @@ function sendToDiscord(embed) {
     };
     
     const req = https.request(options, (res) => {
-      res.on('data', () => {});
+      let responseData = '';
+      res.on('data', (chunk) => responseData += chunk);
       res.on('end', () => {
-        console.log('Message sent to Discord successfully');
-        resolve();
+        if (res.statusCode === 204) {
+          console.log('Message sent to Discord successfully');
+          resolve();
+        } else {
+          console.log('Discord response:', res.statusCode, responseData);
+          reject(new Error(`Discord returned ${res.statusCode}`));
+        }
       });
     });
     
