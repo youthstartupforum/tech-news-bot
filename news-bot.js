@@ -58,12 +58,12 @@ function makeRequest(url) {
 function parseRSSFeed(xmlData) {
   const articles = [];
   
-  // Simple regex-based XML parsing (not ideal but works without dependencies)
+  // Simple regex-based XML parsing with better CDATA handling
   const itemRegex = /<item[^>]*>(.*?)<\/item>/gs;
-  const titleRegex = /<title[^>]*><!\[CDATA\[(.*?)\]\]><\/title>|<title[^>]*>(.*?)<\/title>/s;
-  const linkRegex = /<link[^>]*>(.*?)<\/link>/s;
-  const descRegex = /<description[^>]*><!\[CDATA\[(.*?)\]\]><\/description>|<description[^>]*>(.*?)<\/description>/s;
-  const dateRegex = /<pubDate[^>]*>(.*?)<\/pubDate>/s;
+  const titleRegex = /<title[^>]*>(?:<!\[CDATA\[(.*?)\]\]>|(.*?))<\/title>/s;
+  const linkRegex = /<link[^>]*>(?:<!\[CDATA\[(.*?)\]\]>|(.*?))<\/link>/s;
+  const descRegex = /<description[^>]*>(?:<!\[CDATA\[(.*?)\]\]>|(.*?))<\/description>/s;
+  const dateRegex = /<pubDate[^>]*>(?:<!\[CDATA\[(.*?)\]\]>|(.*?))<\/pubDate>/s;
   
   let matches = xmlData.matchAll(itemRegex);
   let count = 0;
@@ -80,11 +80,11 @@ function parseRSSFeed(xmlData) {
     
     if (titleMatch && linkMatch) {
       const title = (titleMatch[1] || titleMatch[2] || '').trim();
-      const link = linkMatch[1].trim();
+      const link = (linkMatch[1] || linkMatch[2] || '').trim();
       const description = (descMatch ? (descMatch[1] || descMatch[2] || '') : '').replace(/<[^>]*>/g, '').trim();
-      const pubDate = dateMatch ? dateMatch[1].trim() : new Date().toISOString();
+      const pubDate = dateMatch ? (dateMatch[1] || dateMatch[2] || '').trim() : new Date().toISOString();
       
-      if (title && link) {
+      if (title && link && !link.includes('<![CDATA[')) {
         articles.push({
           title: title.substring(0, 200),
           link,
