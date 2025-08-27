@@ -1,3 +1,7 @@
+console.log('Bot starting...');
+console.log('Node version:', process.version);
+console.log('Current time:', new Date());
+
 const https = require('https');
 const http = require('http');
 
@@ -252,4 +256,12 @@ module.exports = {
 // If running directly
 if (require.main === module) {
   scheduleUpdates();
+}
+// At the very end of your file, wrap the startup:
+try {
+  console.log('Attempting to start scheduler...');
+  scheduleUpdates();
+} catch (error) {
+  console.error('Failed to start bot:', error);
+  process.exit(1);
 }
