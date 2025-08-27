@@ -255,13 +255,11 @@ module.exports = {
 
 // If running directly
 if (require.main === module) {
-  scheduleUpdates();
-}
-// At the very end of your file, wrap the startup:
-try {
-  console.log('Attempting to start scheduler...');
-  scheduleUpdates();
-} catch (error) {
-  console.error('Failed to start bot:', error);
-  process.exit(1);
+  try {
+    console.log('Attempting to start scheduler...');
+    scheduleUpdates();
+  } catch (error) {
+    console.error('Failed to start bot:', error);
+    process.exit(1);
+  }
 }
