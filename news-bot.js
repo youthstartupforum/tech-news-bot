@@ -119,22 +119,27 @@ function createSummary(description) {
   return description.substring(0, 150) + '...';
 }
 
-// Function to send message to Discord
+  // Function to send message to Discord
 function sendToDiscord(embed) {
   return new Promise((resolve, reject) => {
-    // Simplified payload structure
-    const payload = {
-      embeds: [{
-        title: embed.title.substring(0, 256), // Discord title limit
-        url: embed.url,
-        description: embed.description.substring(0, 2048), // Discord description limit
-        color: embed.color,
-        footer: {
-          text: embed.footer.text.substring(0, 2048) // Footer text limit
-        },
-        timestamp: embed.timestamp
-      }]
+    // Clean and validate embed data
+    const cleanEmbed = {
+      title: String(embed.title || "No title").substring(0, 256),
+      url: String(embed.url || ""),
+      description: String(embed.description || "No description").substring(0, 2048),
+      color: Number(embed.color) || 0,
+      footer: {
+        text: String((embed.footer && embed.footer.text) || "Tech News").substring(0, 2048)
+      },
+      timestamp: embed.timestamp || new Date().toISOString()
     };
+    
+    const payload = {
+      embeds: [cleanEmbed]
+    };
+    
+    // Debug logging
+    console.log('Sending embed:', JSON.stringify(payload, null, 2));
     
     const data = JSON.stringify(payload);
     
@@ -145,7 +150,7 @@ function sendToDiscord(embed) {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
-        'Content-Length': data.length
+        'Content-Length': Buffer.byteLength(data, 'utf8')
       }
     };
     
@@ -157,14 +162,14 @@ function sendToDiscord(embed) {
           console.log('Message sent to Discord successfully');
           resolve();
         } else {
-          console.log('Discord response:', res.statusCode, responseData);
-          reject(new Error(`Discord returned ${res.statusCode}`));
+          console.log('Discord error - Status:', res.statusCode, 'Response:', responseData);
+          reject(new Error(`Discord returned ${res.statusCode}: ${responseData}`));
         }
       });
     });
     
     req.on('error', (error) => {
-      console.error('Error sending to Discord:', error);
+      console.error('Request error:', error);
       reject(error);
     });
     
@@ -176,9 +181,9 @@ function sendToDiscord(embed) {
 // Function to format article for Discord embed
 function createDiscordEmbed(source, article) {
   return {
-    title: article.title,
-    url: article.link,
-    description: createSummary(article.description),
+    title: (article.title || "").trim(),
+    url: (article.link || "").trim(),
+    description: createSummary(article.description || ""),
     color: getSourceColor(source),
     footer: {
       text: `${NEWS_SOURCES[source].name} • ${new Date(article.pubDate).toLocaleDateString()}`
